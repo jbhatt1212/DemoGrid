@@ -1,0 +1,280 @@
+package amplify.call.adapters
+
+import amplify.call.R
+import amplify.call.databinding.RowChatConversationBinding
+import amplify.call.models.responses.ChatConversation
+import amplify.call.models.responses.MessageLog
+import amplify.call.utils.Logger
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+
+class ChatConversationAdapter(
+    private val onImagePreview: (ChatConversation) -> Unit,
+    private val onCopyMessage: (ChatConversation) -> Unit,
+    private val onMessageSelected: () -> Unit
+) : RecyclerView.Adapter<ChatConversationAdapter.ChatConversationViewHolder>() {
+    private var selectedPosition: Int = -1
+
+    /*region Variable Declaration*/
+    private val TAG = ChatConversationAdapter::class.java.simpleName
+    private var chatConversation: List<ChatConversation> = emptyList()
+
+    /*endregion*/
+
+    inner class ChatConversationViewHolder(val binding: RowChatConversationBinding) :
+        RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int
+    ): ChatConversationViewHolder {
+        val binding = RowChatConversationBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
+        return ChatConversationViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(
+        holder: ChatConversationViewHolder,
+        position: Int
+    ) {
+        val chat = chatConversation[position]
+        Logger.e(TAG, "chat.smsType model $position ==>  ${chat.msgBody}")
+        if (chat.smsType.equals("receive", true)) {
+            holder.binding.clChatReceive.visibility = View.VISIBLE
+            holder.binding.clChatSent.visibility = View.GONE
+            if (chat.messageType.equals("SMS", true) && !chat.msgBody.isNullOrEmpty()) {
+                holder.binding.tvChatReceive.visibility = View.VISIBLE
+                holder.binding.ivImageReceive.visibility = View.GONE
+                holder.binding.tvChatReceive.text = chat.msgBody.toString().trim()
+            } else if (chat.messageType.equals("MMS", true) && !chat.msgBody.isNullOrEmpty()) {
+                holder.binding.tvChatReceive.visibility = View.GONE
+                holder.binding.ivImageReceive.visibility = View.VISIBLE
+                Glide
+                    .with(holder.binding.ivImageReceive.context)
+                    .load(chat.msgBody)
+                    .placeholder(R.drawable.ic_placeholder_image)
+                    .error(R.drawable.ic_placeholder_image)
+                    .into(holder.binding.ivImageReceive)
+            }
+        } else {
+            holder.binding.clChatReceive.visibility = View.GONE
+            holder.binding.clChatSent.visibility = View.VISIBLE
+            if (chat.messageType.equals("SMS", true) && !chat.msgBody.isNullOrEmpty()) {
+                holder.binding.tvChatSent.visibility = View.VISIBLE
+                holder.binding.ivImageSent.visibility = View.GONE
+                Logger.e(
+                    TAG,
+                    "chat.msgBody before $position ==>  ${chat.msgBody.toString().trim()}"
+                )
+                holder.binding.tvChatSent.text = chat.msgBody.toString().trim()
+                Logger.e(TAG, "chat.msgBody after $position ==>  ${holder.binding.tvChatSent.text}")
+            } else if (chat.messageType.equals("MMS", true) && !chat.msgBody.isNullOrEmpty()) {
+                holder.binding.tvChatSent.visibility = View.GONE
+                holder.binding.ivImageSent.visibility = View.VISIBLE
+                Glide
+                    .with(holder.binding.ivImageSent.context)
+                    .load(chat.msgBody)
+                    .placeholder(R.drawable.ic_placeholder_image)
+                    .error(R.drawable.ic_placeholder_image)
+                    .into(holder.binding.ivImageSent)
+            }
+        }
+        val isSelected = position == selectedPosition
+        if (position == selectedPosition) {
+            holder.binding.root.setBackgroundColor(
+                if (isSelected)
+                    holder.binding.root.context.getColor(R.color.clr_chat_selected_bg)
+                else
+                    holder.binding.root.context.getColor(R.color.clr_screen_bg)
+            )
+        }
+        holder.binding.ivImageSent.setOnClickListener {
+            if (!chat.messageType.equals("SMS", true)) {
+                onImagePreview.invoke(chat)
+            }
+        }
+
+        holder.binding.ivImageReceive.setOnClickListener {
+            if (!chat.messageType.equals("SMS", true)) {
+                onImagePreview.invoke(chat)
+            }
+        }
+
+        holder.binding.ivImageSent.setOnLongClickListener{
+            if (!chat.messageType.equals("SMS", true)) {
+                setSelectedItem(position)
+                onMessageSelected.invoke()
+            }
+            true
+        }
+        holder.binding.ivImageReceive.setOnLongClickListener{
+            if (!chat.messageType.equals("SMS", true)) {
+                setSelectedItem(position)
+                onMessageSelected.invoke()
+            }
+            true
+        }
+
+        holder.binding.clChatSent.setOnLongClickListener {
+            if (chat.messageType.equals("SMS", true)) {
+                setSelectedItem(position)
+                onCopyMessage.invoke(chat)
+                onMessageSelected.invoke()
+            }
+            true
+        }
+
+        holder.binding.clChatReceive.setOnLongClickListener {
+            if (chat.messageType.equals("SMS", true)) {
+                setSelectedItem(position)
+                onMessageSelected()
+                onCopyMessage.invoke(chat)
+            }
+            true
+        }
+    }
+
+    override fun getItemCount(): Int {
+        return chatConversation.size
+    }
+
+    fun addChatList(list: List<ChatConversation>) {
+        chatConversation = emptyList()
+        chatConversation = list
+        notifyDataSetChanged()
+    }
+
+    fun clearChatList() {
+        chatConversation = emptyList()
+        notifyDataSetChanged()
+    }
+    fun getSelectedChat(): ChatConversation? {
+        return if (selectedPosition in chatConversation.indices) {
+            chatConversation[selectedPosition]
+        } else null
+    }
+
+    fun clearSelection() {
+        val prevPos = selectedPosition
+        selectedPosition = -1
+        if (prevPos != -1) notifyItemChanged(prevPos)
+    }
+
+    fun setSelectedItem(pos: Int) {
+        val prevPos = selectedPosition
+        selectedPosition = pos
+        if (prevPos != -1) notifyItemChanged(prevPos)
+        notifyItemChanged(pos)
+    }
+    fun removeSelectedItem() {
+        if (selectedPosition != -1) {
+            val mutableList = chatConversation.toMutableList()
+            mutableList.removeAt(selectedPosition)
+            chatConversation = mutableList
+            notifyItemRemoved(selectedPosition)
+            selectedPosition = -1
+        }
+    }
+
+}
+
+binding.ivDeleteMsg.setOnClickListener {
+            val selectedChat = chatConversationAdapter.getSelectedChat()
+            Logger.e(TAG,"Selectedchat : $selectedChat")
+            selectedChat?.let { chat ->
+                showAlertDialog(
+                    this,
+                    R.string.dlg_chat_message_delete_title,
+                    R.string.dlg_chat_msg_delete_desc,
+                    R.string.dlg_chat_delete_btn_yes,
+                    R.string.dlg_chat_delete_btn_no,
+                    {
+                        Logger.e(TAG,"Chat id : ${chat.id}")
+                        if (chat.id != null) {
+                            viewModel.deleteChatMessage(chat.id)
+                        }
+//                        chat.id?.let { viewModel.deleteChatMessage(chat.id) }
+                    },
+                    {
+                        it.setOnDismissListener(object : DialogInterface.OnDismissListener {
+                            override fun onDismiss(dialog: DialogInterface?) {
+                                dialog?.dismiss()
+                            }
+                        })
+                    })
+            }
+        }
+    }
+
+private fun handleAdapter() {
+
+        chatConversationAdapter = ChatConversationAdapter(
+            { imagePreView ->
+                showImagePreview(imagePreView)
+            }, { copyMessage ->
+                setClipboard(this, copyMessage.msgBody.toString())
+            },onMessageSelected = {
+                showSelectionToolbar()
+            })
+        val rvChatConversationManager =
+            LinearLayoutManager(this, LinearLayoutManager.VERTICAL, true)
+        binding.rvChatConversation.layoutManager = rvChatConversationManager
+
+        binding.rvChatConversation.adapter = chatConversationAdapter
+        binding.rvChatConversation.addOnScrollListener(object :
+            RecyclerOnScrollListener(rvChatConversationManager) {
+            override fun onLoadMore(current_page: Int) {
+                if (page < totalPages) {
+                    page += 1
+                    viewModel.getChatOnScroll(Prefs.phoneNumber, destinationNumber, page)
+                }
+            }
+        })
+    }
+
+package amplify.call.utils
+
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
+abstract class RecyclerOnScrollListener(
+    private var linearLayoutManager: LinearLayoutManager
+) : RecyclerView.OnScrollListener() {
+
+    private val TAG = RecyclerOnScrollListener::class.java.simpleName
+
+    companion object {
+        var isLastPage: Boolean = false
+        var totalItemCount: Int = 0
+        var isLoading: Boolean = false
+        var currentPageOffset: Int = 0
+    }
+
+    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+        super.onScrolled(recyclerView, dx, dy)
+        if (linearLayoutManager == null) {
+            return
+        }
+
+        val visibleItemCount: Int = linearLayoutManager.childCount
+        val totalListItemCount: Int = linearLayoutManager.itemCount
+        val firstVisibleItemPosition: Int = linearLayoutManager.findFirstVisibleItemPosition()
+
+        if (!isLastPage && !isLoading) {
+            if (visibleItemCount + firstVisibleItemPosition >= totalListItemCount
+                && firstVisibleItemPosition >= 0
+            ) {
+                currentPageOffset += 1
+                onLoadMore(currentPageOffset)
+            }
+        }
+    }
+
+    abstract fun onLoadMore(current_page: Int)
+}
