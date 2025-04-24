@@ -4,10 +4,12 @@ import amplify.call.R
 import amplify.call.databinding.RowChatConversationBinding
 import amplify.call.models.responses.ChatConversation
 import amplify.call.models.responses.MessageLog
+import amplify.call.models.viewmodels.ChatViewModel
 import amplify.call.utils.Logger
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 
@@ -21,6 +23,7 @@ class ChatConversationAdapter(
     /*region Variable Declaration*/
     private val TAG = ChatConversationAdapter::class.java.simpleName
     private var chatConversation: List<ChatConversation> = emptyList()
+    private var deletedIds = emptySet<Int>()
 
     /*endregion*/
 
@@ -86,14 +89,12 @@ class ChatConversationAdapter(
             }
         }
         val isSelected = position == selectedPosition
-        if (position == selectedPosition) {
-            holder.binding.root.setBackgroundColor(
-                if (isSelected)
-                    holder.binding.root.context.getColor(R.color.clr_chat_selected_bg)
-                else
-                    holder.binding.root.context.getColor(R.color.clr_screen_bg)
-            )
-        }
+        holder.binding.root.setBackgroundColor(
+            if (isSelected)
+                holder.binding.root.context.getColor(R.color.clr_chat_selected_bg)
+            else
+                holder.binding.root.context.getColor(R.color.clr_screen_bg)
+        )
         holder.binding.ivImageSent.setOnClickListener {
             if (!chat.messageType.equals("SMS", true)) {
                 onImagePreview.invoke(chat)
@@ -143,10 +144,19 @@ class ChatConversationAdapter(
     override fun getItemCount(): Int {
         return chatConversation.size
     }
+    fun markDeleted(ids: Set<Int>) {
+        deletedIds = ids
+    }
+    fun replaceAll(list: List<ChatConversation>) {
+        selectedPosition = -1
+        chatConversation = list
+        notifyDataSetChanged()
+    }
 
     fun addChatList(list: List<ChatConversation>) {
+        selectedPosition = -1
         chatConversation = emptyList()
-        chatConversation = list
+        chatConversation = list.filter { it.id !in deletedIds }
         notifyDataSetChanged()
     }
 
@@ -172,6 +182,7 @@ class ChatConversationAdapter(
         if (prevPos != -1) notifyItemChanged(prevPos)
         notifyItemChanged(pos)
     }
+
     fun removeSelectedItem() {
         if (selectedPosition != -1) {
             val mutableList = chatConversation.toMutableList()
@@ -181,12 +192,203 @@ class ChatConversationAdapter(
             selectedPosition = -1
         }
     }
+//fun removeSelectedItem(id: Int) {
+//    val mutableList = chatConversation.toMutableList()
+//    val index = mutableList.indexOfFirst { it.id == id }
+//    if (index != -1) {
+//        mutableList.removeAt(index)
+//        chatConversation = mutableList
+//        notifyItemRemoved(index)
+//        selectedPosition = -1
+//    } else {
+//        Logger.e(TAG, "Message ID $id not found for deletion")
+//    }
+//}
 
 }
 
-binding.ivDeleteMsg.setOnClickListener {
+
+
+viewModel.getChatListDataLocal.observe(this) { chatData ->
+            if (chatData != null) {
+                if (chatData.isNotEmpty()) {
+//                    lastDeletedId?.let { deletedId ->
+//                        chatConversationList.removeAll { it.id == deletedId }
+//                    }
+                    val tempList = chatData.filter { cd ->
+                        !chatConversationList.any { ccd ->
+                            ccd.id == cd.id
+                        }
+                    }
+                    if (tempList.isNotEmpty()) {
+                        chatConversationList.addAll(tempList)
+                        chatConversationList.sortByDescending { cc -> cc.id }
+                        Logger.e(TAG, "android 5 580 chatConversationList $chatConversationList")
+                        chatConversationAdapter.addChatList(chatConversationList)
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            val position = chatConversationList.size
+                            binding.rvChatConversation.smoothScrollToPosition(0)
+                        }, 700)
+                    }
+                }
+                viewModel.clearLocalResponse()
+                viewModel.getChatForTheFirstTime(Prefs.phoneNumber, destinationNumber)
+            }
+        }
+
+        viewModel.getChatForTheFirstTimeError.observe(this) {
+            if (!it.isNullOrEmpty()) {
+                showToast(this, it)
+                viewModel.clearFirstChatApiData()
+            }
+        }
+
+        viewModel.getChatForFirstTimeSuccess.observe(this) { chatData ->
+            if (chatData != null) {
+                totalPages = chatData.pagination.totalPage
+                page = chatData.pagination.currentPage
+//                lastDeletedId?.let { deletedId ->
+//                    chatConversationList.removeAll { it.id == deletedId }
+//                }
+                if (chatConversationList.isNotEmpty()) {
+                    val tempList = chatData.conversation.filter { cd ->
+                        !chatConversationList.any { ccd ->
+                            ccd.id == cd.id
+                        }
+                    }
+                    if (tempList.isNotEmpty()) {
+                        chatConversationList.addAll(tempList)
+                        chatConversationList.sortByDescending { cc -> cc.id }
+                        Logger.e(TAG, "android 5 606 chatConversationList $chatConversationList")
+                        chatConversationAdapter.addChatList(chatConversationList)
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            val position = chatConversationList.size
+                            binding.rvChatConversation.smoothScrollToPosition(0)
+                        }, 700)
+                    }
+                } else {
+                    chatConversationList.addAll(chatData.conversation)
+                    chatConversationList.sortByDescending { cc -> cc.id }
+                    Logger.e(TAG, "android 5 615 chatConversationList $chatConversationList")
+                    chatConversationAdapter.addChatList(chatConversationList)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val position = chatConversationList.size
+                        binding.rvChatConversation.smoothScrollToPosition(0)
+                    }, 700)
+                }
+                viewModel.clearFirstChatApiData()
+            }
+        }
+
+        viewModel.getChatOnScrollSuccess.observe(this) { chatData ->
+            if (chatData != null) {
+                totalPages = chatData.pagination.totalPage
+                page = chatData.pagination.currentPage
+//                lastDeletedId?.let { deletedId ->
+//                    chatConversationList.removeAll { it.id == deletedId }
+//                }
+                val tempList = chatData.conversation.filter { cd ->
+                    !chatConversationList.any { ccd ->
+                        ccd.id == cd.id
+                    }
+                }
+                if (tempList.isNotEmpty()) {
+                    chatConversationList.addAll(tempList)
+                    chatConversationList.sortByDescending { cc -> cc.id }
+                    Logger.e(TAG, "android 5 637 chatConversationList $chatConversationList")
+                    chatConversationAdapter.addChatList(chatConversationList)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val position = chatConversationList.size
+                        binding.rvChatConversation.smoothScrollToPosition(0)
+                    }, 700)
+                }
+
+                viewModel.clearScrollChatApiData()
+            }
+        }
+
+        viewModel.getChatLopperSuccess.observe(this) { chatData ->
+            if (chatData != null) {
+                totalPages = chatData.pagination.totalPage
+                page = chatData.pagination.currentPage
+//                lastDeletedId?.let { deletedId ->
+//                    chatConversationList.removeAll { it.id == deletedId }
+//                }
+                val tempList = chatData.conversation.filter { cd ->
+                    !chatConversationList.any { ccd ->
+                        ccd.id == cd.id
+                    }
+                }
+                if (tempList.isNotEmpty()) {
+                    chatConversationList.addAll(tempList)
+                    chatConversationList.sortByDescending { cc -> cc.id }
+                    Logger.e(TAG, "android 5 660 chatConversationList $chatConversationList")
+                    chatConversationAdapter.addChatList(chatConversationList)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val position = chatConversationList.size
+                        binding.rvChatConversation.smoothScrollToPosition(0)
+                    }, 700)
+                }
+
+                viewModel.clearLooperChatApiData()
+            }
+        }
+
+        viewModel.getSentChatError.observe(this) {
+            if (it.isNotEmpty()) {
+                handler.post(runnable)
+                showToast(this, it)
+                viewModel.clearChatSentError()
+                Logger.e(TAG, "error : $it")
+                binding.ivSendMsg.isClickable = true
+            }
+        }
+        /*region message send success android8*/
+        viewModel.sentChatSuccess.observe(this) {
+            if (it != null) {
+                binding.ivSendMsg.isClickable = true
+                viewModel.clearChatSentError()
+                Logger.e(TAG, "message send success : $it")
+            }
+        }
+        /*endregion*/
+        viewModel.getLastInsertedChat.observe(this) { chatData ->
+            if (!chatData.isNullOrEmpty()) {
+
+                val freshList = chatData
+                    .filter { it.id !in deletedIds }
+
+                val tempList = chatData.filter { cd ->
+                    !chatConversationList.any { ccd ->
+                        ccd.id == cd.id
+                    }
+                }
+                Logger.e(TAG,"chat list 1 : $tempList")
+                if (tempList.isNotEmpty()) {
+                    chatConversationList.addAll(tempList)
+                    Logger.e(TAG,"chat list  : $tempList")
+                    chatConversationList.sortByDescending { cc -> cc.id }
+
+
+                    chatConversationAdapter.markDeleted(deletedIds)
+                    chatConversationAdapter.replaceAll(freshList)
+                    Logger.e(TAG, "android 5 689 chatConversationList $chatConversationList")
+                    chatConversationAdapter.addChatList(chatConversationList)
+                    Logger.e(TAG, "android 5 689 1 chatConversationList $chatConversationList")
+
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val position = chatConversationList.size
+                        binding.rvChatConversation.smoothScrollToPosition(0)
+                    }, 700)
+                }
+                viewModel.clearLastInsertedChat()
+                handler.post(runnable)
+            }
+        }
+
+ binding.ivDeleteMsg.setOnClickListener {
             val selectedChat = chatConversationAdapter.getSelectedChat()
-            Logger.e(TAG,"Selectedchat : $selectedChat")
+            Logger.e(TAG, "Selectedchat : $selectedChat")
             selectedChat?.let { chat ->
                 showAlertDialog(
                     this,
@@ -195,11 +397,11 @@ binding.ivDeleteMsg.setOnClickListener {
                     R.string.dlg_chat_delete_btn_yes,
                     R.string.dlg_chat_delete_btn_no,
                     {
-                        Logger.e(TAG,"Chat id : ${chat.id}")
+                        Logger.e(TAG, "Chat id : ${chat.id}")
                         if (chat.id != null) {
                             viewModel.deleteChatMessage(chat.id)
+                            deletedIds.add(chat.id)
                         }
-//                        chat.id?.let { viewModel.deleteChatMessage(chat.id) }
                     },
                     {
                         it.setOnDismissListener(object : DialogInterface.OnDismissListener {
@@ -211,70 +413,3 @@ binding.ivDeleteMsg.setOnClickListener {
             }
         }
     }
-
-private fun handleAdapter() {
-
-        chatConversationAdapter = ChatConversationAdapter(
-            { imagePreView ->
-                showImagePreview(imagePreView)
-            }, { copyMessage ->
-                setClipboard(this, copyMessage.msgBody.toString())
-            },onMessageSelected = {
-                showSelectionToolbar()
-            })
-        val rvChatConversationManager =
-            LinearLayoutManager(this, LinearLayoutManager.VERTICAL, true)
-        binding.rvChatConversation.layoutManager = rvChatConversationManager
-
-        binding.rvChatConversation.adapter = chatConversationAdapter
-        binding.rvChatConversation.addOnScrollListener(object :
-            RecyclerOnScrollListener(rvChatConversationManager) {
-            override fun onLoadMore(current_page: Int) {
-                if (page < totalPages) {
-                    page += 1
-                    viewModel.getChatOnScroll(Prefs.phoneNumber, destinationNumber, page)
-                }
-            }
-        })
-    }
-
-package amplify.call.utils
-
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-
-abstract class RecyclerOnScrollListener(
-    private var linearLayoutManager: LinearLayoutManager
-) : RecyclerView.OnScrollListener() {
-
-    private val TAG = RecyclerOnScrollListener::class.java.simpleName
-
-    companion object {
-        var isLastPage: Boolean = false
-        var totalItemCount: Int = 0
-        var isLoading: Boolean = false
-        var currentPageOffset: Int = 0
-    }
-
-    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-        super.onScrolled(recyclerView, dx, dy)
-        if (linearLayoutManager == null) {
-            return
-        }
-
-        val visibleItemCount: Int = linearLayoutManager.childCount
-        val totalListItemCount: Int = linearLayoutManager.itemCount
-        val firstVisibleItemPosition: Int = linearLayoutManager.findFirstVisibleItemPosition()
-
-        if (!isLastPage && !isLoading) {
-            if (visibleItemCount + firstVisibleItemPosition >= totalListItemCount
-                && firstVisibleItemPosition >= 0
-            ) {
-                currentPageOffset += 1
-                onLoadMore(currentPageOffset)
-            }
-        }
-    }
-
-    abstract fun onLoadMore(current_page: Int)
-}
